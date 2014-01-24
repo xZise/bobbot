@@ -68,6 +68,11 @@ for page in gen:
       print("Multiple {{Part config}} found.")
     if parent is not None:
       print "Parent: ", parent
-    print "Parts/{}/{}".format(parent, sub_name)
+    target = "Parts/{}/{}".format(parent, sub_name)
+    if pywikibot.Page(site, target).exists():
+      print("Didn't moved '{}' to '{}' because it already exists".format(page.title(), target))
+    else:
+      print("Move '{}' to '{}'".format(page.title(), target))
+      page.move(newtitle=target, reason="Update to new directory system", deleteAndMove=True)
   else:
     print("Skipped page: '{}'".format(page.title()))
