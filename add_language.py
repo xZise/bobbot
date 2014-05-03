@@ -15,8 +15,38 @@ import re
 import sys
 from string import Template
 from pywikibot.page import Page, Category
+    
+import pywikibot
+from pywikibot import deprecate_arg
+from pywikibot import config
+from pywikibot import deprecated
+from pywikibot import pagegenerators
+from pywikibot.throttle import Throttle
+from pywikibot.data import api
+from pywikibot.exceptions import *
+from pywikibot.site import LoginStatus
+def login(self, sysop=False):
+	print "hihi"
+	"""Log the user in if not already logged in."""
+        # check whether a login cookie already exists for this user
+        self._loginstatus = LoginStatus.IN_PROGRESS
+        if hasattr(self, "_userinfo"):
+            del self._userinfo
+        self.getuserinfo()
+	print self.userinfo['name']
+	print self._username[sysop]
+	print self.logged_in(sysop)
+#        if self.userinfo['name'] == self._username[sysop] and \
+#           self.logged_in(sysop):
+#            return
+        loginMan = api.LoginManager(site=self, sysop=sysop,
+                                    user=self._username[sysop])
+        if loginMan.password is None:
+		print "none"
+        print "'" + loginMan.password + "'"
 
-#TODO: Last place find
+login(pywikibot.getSite())
+
 def insert_alphabetically(page, regex, language_code, new, comment, suffix="\n"):
   """
   Inserts the "new" into the list given in site. Each entry of the list, is matched by
@@ -32,13 +62,15 @@ def insert_alphabetically(page, regex, language_code, new, comment, suffix="\n")
   if re.search(r"[^$](\$\$)*\$$", regex):
     regex += '$'
   oldtext = page.text
-  matches = list(re.finditer(Template(regex).substitute(code='(?P<code>[a-z]{2}(-[a-z]{2})?)'), oldtext, re.M))
- # print Template(regex).substitute(code='(?P<code>[a-z]{2}(-[a-z]{2})?)')
+  compiled = re.compile(Template(regex).substitute(code=r'(?P<code>[a-z]{2}(-[a-z]{2})?)', newline=r'(?P<newline>\n)?'), re.M)
+  print compiled.pattern
+  matches = list(compiled.finditer(oldtext))
   if len(matches) == 0:
     print("No matches found.")
     return False
   else:
     insert_at = 0
+    got_to_end = False
     for match in matches:
       if match.group('code') == language_code:
         print("Language is already available")
@@ -47,8 +79,21 @@ def insert_alphabetically(page, regex, language_code, new, comment, suffix="\n")
         insert_at = match.start()
         break
     else:
-      insert_at = match.end() + 1 # Skip over \n
+      insert_at = match.end()
+      got_to_end = True
+    try:
+      if match.start('newline') < 0:
+        suffix = ""
+      else:
+        suffix = "\n"
+    except IndexError:
+      pass
+    print "here we are {}".format(insert_at)
+    print oldtext[insert_at]
+    if got_to_end and len(oldtext) > insert_at + len(suffix):
+      insert_at += len(suffix)
     if insert_at > 0 and len(oldtext) == insert_at - len(suffix) + 1:
+      print "+= {}".format(len(suffix))
       oldtext += suffix
     page.text = oldtext[:insert_at]
     if callable(new):
@@ -88,7 +133,8 @@ if mw_langlink.exists():
   print("'{}' already exists. Skipped creation.".format(mw_langlink.title()))
 else:
   mw_langlink.text = "{{{{mw-langlink|{}}}}}".format(language_code)
-#  mw_langlink.save(comment=comment_new)
+  if pywikibot.inputChoice("Create '{}'?".format(mw_langlink.title()), ['Yes', 'No'], ['y', 'n'], 'n') == 'y':
+    mw_langlink.save(comment=comment_new)
 insert_alphabetically(Page(site, "MediaWiki:Sidebar"), r"^\*\* langlink-$code\|.*$", language_code, "** langlink-$code|{{subst:#language:$code}}", comment_new)
 
 def optional_prefix(code, match=None):
@@ -106,14 +152,15 @@ if len(language_code) == 5 and pywikibot.inputChoice("Is this a dialect language
     insert_alphabetically(dialects, r"^(?:&middot; )?{{mp-lang\|$code}}$", language_code, optional_prefix, comment_new)
   else:
     dialects.text = optional_prefix(language_code)
-#    dialects.save(comment=comment_new)
+    if pywikibot.inputChoice("Create '{}'?".format(dialects.title()), ['Yes', 'No'], ['y', 'n'], 'n') == 'y':
+      dialects.save(comment=comment_new)
   print dialects.text
 else:
   insert_alphabetically(Page(site, "Template:Main Page Layout/Language Box"), r"^&middot; {{mp-lang\|$code\|{{{1\|}}}}}$", language_code, "&middot; {{mp-lang|$code|{{{1|}}}}}", comment_new)
 
 code_templates = {
-  "lang": (r"^\|\s*$code\s*=\s*{{{[a-z]{2}(-[a-z]{2})\|}}}$", "| $code = {{{$code|}}}"),
-  "if lang": (r"\|\s*$code", "|$code", ""),
+  "lang": (r"$newline\|\s*$code\s*=\s*{{{[a-z]{2}(-[a-z]{2})?\|}}}", "| $code = {{{$code|}}}"),
+  "if lang": (r"$newline\|\s*$code", "|$code"),
 }
 
 for k, v in code_templates.iteritems():
@@ -121,14 +168,4 @@ for k, v in code_templates.iteritems():
   print("Going through '{}'.".format(cat.title()))
   for article in cat.articles():
     if article.title().startswith("Template:"):
-      insert_alphabetically(article, v[0], language_code, v[1], comment_new, "\n" if len(v) < 3 else v[2])
-      end = article.text.rfind("</includeonly>")
-      if end < 0:
-        end = article.text.rfind("<noinclude>")
-      else:
-        end += len("</includeonly>")
-      if end < 0:
-        end = len(article.text)
-      else:
-        end += len("<noinclude>")
-      print article.text[:end]
+      insert_alphabetically(article, v[0], language_code, v[1], comment_new)

@@ -123,11 +123,16 @@ for arg in args:
 if version is None:
   print("Version is not given.")
   #get version from Template:Check version/Cur and then ++
-  current_version_match = re.compile(r"<(only)?include(only)?>([0-9.]+)</(only)?include(only)?>.*").search(Page(site, "Template:Check version/Cur").get())
+  current_version_match = re.search(r"<(only)?include(only)?>((?:[0-9]+\.)+[0-9]+)</(only)?include(only)?>.*", Page(site, "Template:Check version/Cur").get())
   if current_version_match:
     if current_version_match.group(1) != current_version_match.group(2) or current_version_match.group(4) != current_version_match.group(5):
-      increment_index = int(pywikibot.inputChoice("Which part of the version number was incremented?", ['0', '1 (default)', '2'], ['0', '1', '2'], '1'))
-      if increment_index in [0, 1, 2]:
+      parts = [str(x) for x in range(a.count(".") + 1)]
+      if len(parts) < 2:
+        parts = [str(x) for x in range(3)]
+      parts_default = list(parts)
+      parts_default[1] = "1 (default)"
+      increment_index = int(pywikibot.inputChoice("Which part of the version number was incremented?", parts_default, parts, '1'))
+      if increment_index in [int(x) for x in parts]:
         version = guess_next_version(current_version_match.group(3), increment_index)
         if pywikibot.inputChoice("Guessing next version number: {}?".format(version), ['Yes', 'No'], ['y', 'n'], 'n') == 'n':
           sys.exit(1)
@@ -154,9 +159,8 @@ if root_directory is not None:
 
 def check_file(root, filename):
   filename = "Parts/{}".format(filename) # might be necessary
-  #TODO: read that file
-  if os.path.getsize(os.path.join(root, filename)) > 10<<20:
-    print("Cancelled reading {} because it is larger than 10 MiB.".format(filename))
+  if os.path.getsize(os.path.join(root, filename)) > 1<<20:
+    print("Cancelled reading {} because it is larger than 1 MiB.".format(filename))
     return
   f = open(os.path.join(root, filename), 'r')
   content = f.read()
@@ -166,15 +170,12 @@ def check_file(root, filename):
     old_page_content = target.get()
     old_page_content = opening_brackets.sub(r"\1&#123;\2", old_page_content)
     old_page_content = closing_brackets.sub(r"\1&#125;\2", old_page_content)
-    #TODO: Check: Diff should only be empty, when this is true
-    print old_page_content == new_page_content
     pywikibot.showDiff(old_page_content, new_page_content)
     if old_page_content != new_page_content:
       if pywikibot.inputChoice("Do you want to upload the new version of '{}'?".format(filename), ['Yes', 'No'], ['y', 'n'], 'n') == 'y':
         target.text = new_page_content
         target.save(comment=update_comment)
   else:
-    #TODO: check if regex works, maybe the group needs non greedy
     match = title.search(content)
     if match:
       part_name = match.group(0)
@@ -245,6 +246,9 @@ if pywikibot.inputChoice("Should a check version category for version {} be crea
     check_version_cat.save(comment=comment_new)
 if pywikibot.inputChoice("Should a redirect from {} to the version history be created?".format(version), ['Yes', 'No'], ['y', 'n'], 'n') == 'y':
   version_redirect = Page(site, version)
-  version_redirect.text = "#REDIRECT [[Version history#{}]]".format(version)
-  print version_redirect.text
-#  version_redirect.save(comment=comment_update if version_redirect.exists() else comment_new)
+  if version_redirect.exists():
+    print("'{}' already exists. Skipped.".format(version_redirect.title()))
+  else:
+    version_redirect.text = "#REDIRECT [[Version history#{}]]".format(version)
+    print version_redirect.text
+    version_redirect.save(comment=comment_update if version_redirect.exists() else comment_new)

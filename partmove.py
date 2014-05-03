@@ -2,8 +2,8 @@
 # -*- coding: utf-8  -*-
 import pywikibot
 import re
-from pywikibot import textlib, page
-import sys
+from pywikibot import textlib
+from pywikibot.page import Page, Category
 
 parent_map = {
   'Adapter': 'Structural',
@@ -38,7 +38,6 @@ def extract_parent(template, base_length):
     return template[1]['parent']
   else:
     sub_name = template[0][base_length:]
-    print sub_name
     if sub_name in parent_map:
       return parent_map[sub_name]
     else:
@@ -49,7 +48,7 @@ p = re.compile(r"Parts/([^/]+)/part\.cfg")
 closing_brackets = re.compile(r"(^|[^}])}($|[^}])", re.M)
 opening_brackets = re.compile(r"(^|[^{]){($|[^{])", re.M)
 
-cat = page.Category(site, 'Category:Part configuration')
+cat = Category(site, 'Category:Part configuration files')
 for page in cat.articles():
   print("==========================================")
   m = p.search(page.title())
@@ -65,14 +64,14 @@ for page in cat.articles():
     templates = textlib.extract_templates_and_params(entity_text)
     part_config_count = 0
     for template in templates:
-      if template[0] == 'Part config' and part_config_count == 0:
+      if template[0] == 'Part config':
         part_config_count += 1;
-        if len(template) == 2 and '1' in template[1]:
+        if part_config_count == 0 and len(template) == 2 and '1' in template[1]:
           part_name = template[1]['1']
-          if pywikibot.Page(site, part_name + "/Box").exists():
+          if Page(site, part_name + "/Box").exists():
             part_name = part_name + "/Box"
           print("Infobox is in page: '{}'".format(part_name))
-          part_page = pywikibot.Page(site, part_name)
+          part_page = Page(site, part_name)
           part_templates = textlib.extract_templates_and_params(part_page.get())
           for part_template in part_templates:
             # Infobox/Part (7+1+4)
@@ -100,7 +99,7 @@ for page in cat.articles():
         sub_name = part
       target = "Parts/{}/{}/part.cfg".format(parent, sub_name)
       print("Parent: {}; Target: {}".format(parent, target))
-      if pywikibot.Page(site, target).exists():
+      if Page(site, target).exists():
         print("Didn't moved '{}' to '{}' because it already exists".format(page.title(), target))
       else:
         print("Move '{}' to '{}'".format(page.title(), target))

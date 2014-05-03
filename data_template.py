@@ -1,11 +1,12 @@
 #!/usr/bin/python
 # -*- coding: utf-8  -*-
+from __future__ import unicode_literals
 import pywikibot
 import re
 from pywikibot import textlib
 
 site = pywikibot.getSite()
-data_template = re.compile(".*/(Data|Box|RefFrame|Param)")
+data_template = re.compile("^.*/(Data|Box|RefFrame|Param)$")
 yes_all = False
 for arg in pywikibot.handleArgs():
   if arg in ["--all", "-a"]:
