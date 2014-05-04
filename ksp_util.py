@@ -44,31 +44,40 @@ def get_image_size(content):
         return
     return width, height
 
+class EditTable:
+    def __init__(self, site, page_name):
+        self.page = pywikibot.page.Page(site, page_name)
+        content = self.page.text
+        self.start = content.find("BOBBOT EDIT START")
+        if self.start >= 0:
+            self.start = content.find("-->", self.start) #new line after this
+            if self.start >= 0:
+                new_line_found = False
+                while self.start < len(content):
+                    new_line = content[self.start] in ["\n", "\r"]
+                    if new_line_found and not new_line:
+                        break;
+                    elif not new_line_found:
+                        new_line_found = new_line
+                    self.start += 1
+        self.end = content.find("BOBBOT EDIT END") #new line before this
+        if self.end >= 0 and self.start >= 0:
+            self.end = content.rfind("<!--", self.start, self.end)
+            if self.end >= 0:
+                while self.end > 0:
+                    if content[self.end - 1] in ["\n", "\r"]:
+                        break;
+                    self.end -= 1
+        self.selected = content[self.start:self.end]
+
+    def splice(self, content, overwrite=True):
+        start = self.start if overwrite else self.end #use [:end] ... [end:] to not overwrite
+        self.page.text = self.page.text[:start] + content + self.page.text[self.end:]
+
 # read User:BobBot/Thumbnails
 def read_edit_table(site, page_name):
-    page = pywikibot.page.Page(site, page_name)
-    content = page.text
-    start = content.find("BOBBOT EDIT START")
-    if start >= 0:
-        start = content.find("-->", start) #new line after this
-        if start >= 0:
-            new_line_found = False
-            while start < len(content):
-                new_line = content[start] in ["\n", "\r"]
-                if new_line_found and not new_line:
-                    break;
-                elif not new_line_found:
-                    new_line_found = new_line
-                start += 1
-    end = content.find("BOBBOT EDIT END") #new line before this
-    if end >= 0 and start >= 0:
-        end = content.rfind("<!--", start, end)
-        if end >= 0:
-            while end > 0:
-                if content[end - 1] in ["\n", "\r"]:
-                    break;
-                end -= 1
-    return (page, content[start:end], start, end)
+    o = EditTable(site, page_name)
+    return (o.page, o.selected, o.start, o.end)
 
 def splice_edit_table(table_data, content, overwrite=True):
     end = table_data[2 if overwrite else 3] #use [:end] ... [end:] to not overwrite

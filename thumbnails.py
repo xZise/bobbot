@@ -9,44 +9,7 @@ import StringIO
 import struct
 import imghdr
 import hashlib
-
-# Answer by "Fred the Fantastic": http://stackoverflow.com/a/20380514/473890
-# Modified to get a file object directly
-def get_image_size(content):
-    '''Determine the image type of fhandle and return its size.
-    from draco'''
-    if len(content) < 24:
-        return
-    image_type = imghdr.what("", content)
-    if image_type == 'png':
-        check = struct.unpack('>i', content[4:8])[0]
-        if check != 0x0d0a1a0a:
-            return
-        width, height = struct.unpack('>ii', content[16:24])
-    elif image_type == 'gif':
-        width, height = struct.unpack('<HH', content[6:10])
-    elif image_type == 'jpeg':
-        try:
-            fhandle = StringIO.StringIO(content)
-            fhandle.seek(0) # Read 0xff next
-            size = 2
-            ftype = 0
-            while not 0xc0 <= ftype <= 0xcf:
-                fhandle.seek(size, 1)
-                byte = fhandle.read(1)
-                while ord(byte) == 0xff:
-                    byte = fhandle.read(1)
-                ftype = ord(byte)
-                size = struct.unpack('>H', fhandle.read(2))[0] - 2
-            # We are at a SOFn block
-            fhandle.seek(1, 1)  # Skip `precision' byte.
-            height, width = struct.unpack('>HH', fhandle.read(4))
-        except Exception as  e: #IGNORE:W0703
-            print e
-            return
-    else:
-        return
-    return width, height
+import ksp_util
 
 # Files in these categories are small but no thumbnails
 VALID_CATEGORIES = { 'Technology tree node images' }
@@ -65,34 +28,12 @@ def find_new_line(string, index, check):
             start += 1
 
 # read User:BobBot/Thumbnails
-thumbs_page = pywikibot.page.Page(site, "User:BobBot/Thumbnails")
-thumbs_content = thumbs_page.text
+thumbs_table = ksp_util.EditTable(site, "User:BobBot/Thumbnails")
 thumb_line = re.compile(r"^{{User:BobBot/thumb\|(File:[^|]*)\|([yn?])\|([am])\|([0-9a-fA-F]{32})}}$", re.M)
 hash_regex = re.compile(r"^[0-9a-fA-F]{32}$")
 is_thumb_rep = re.compile("{{([Nn]oThumbnailsPlease|[Nn]o thumbnails please)(\|[0-9a-fA-F]{32})?}}")
 is_no_thumb_rep = re.compile("{{[Ii]s not thumbnail(\|[0-9a-fA-F]{32})?}}")
-start = thumbs_content.find("BOBBOT EDIT START")
-if start >= 0:
-    start = thumbs_content.find("-->", start) #new line after this
-    if start >= 0:
-        new_line_found = False
-        while start < len(thumbs_content):
-            new_line = thumbs_content[start] in ["\n", "\r"]
-            if new_line_found and not new_line:
-                break;
-            elif not new_line_found:
-                new_line_found = new_line
-            start += 1
-end = thumbs_content.find("BOBBOT EDIT END") #new line before this
-if end >= 0 and start >= 0:
-    end = thumbs_content.rfind("<!--", start, end)
-    if end >= 0:
-        while end > 0:
-            if thumbs_content[end - 1] in ["\n", "\r"]:
-                break;
-            end -= 1
-print thumbs_content[start:end]
-entries = thumb_line.findall(thumbs_content[start:end])
+entries = thumb_line.findall(thumbs_table.selected)
 remainings = []
 images_changed = 0
 images_is_template = 0
@@ -101,64 +42,68 @@ images_updated = 0
 images_already_applied = 0
 images_conflict = 0
 for entry in entries:
-    if entry[1] not in ["y", "n"]:
-        remainings += [ entry ]
-    else:
-        is_thumbnail = entry[1] == "y"
-        image_page = pywikibot.page.ImagePage(site, entry[0])
-        image_data = urllib2.urlopen(image_page.fileUrl()).read()
-        new_hash = hashlib.md5(image_data).hexdigest().lower()
-        is_applicable = new_hash.lower() == entry[3].lower() #hash hashn't changed
-        content = image_page.text
-        templates = textlib.extract_templates_and_params(content)
-        is_thumb_hashes = set()
-        is_no_thumb_hashes = set()
-        for template in templates:
-            hashes = None
-            if template[0].lower() in ["nothumbnailsplease", "no thumbnails please"]:
-                hashes = is_thumb_hashes
-            elif template[0].lower() == "is not thumbnail":
-                hashes = is_no_thumb_hashes
-            if "1" in template[1] and hash_regex.match(template[1]["1"]):
-                hashes.add(template[1]["1"])
-        if len(is_no_thumb_hashes) == 0 and len(is_thumb_hashes) == 0:
-            # automatic
-            if not is_applicable:
-                # hash has changed
-                remainings += [ (entry[0], "?", "a", new_hash) ]
-                images_changed += 1
-            elif is_thumbnail:
-                image.text = "{{No thumbnails please|" + new_hash + "}}\n" + content
-                #image.save(comment="+add 'no thumbnails please' template;")
-                print("'{}' would've saved:".format(image_page.title))
-                print(image.text)
-                images_is_template += 1
-            else:
-                image.text = content + "\n{{Is not thumbnail|" + new_hash + "}}"
-                #image.save(comment="+add 'is not thumbnails' template;")
-                print("'{}' would've saved:".format(image_page.title))
-                print(image.text)
-                images_not_template += 1
-        elif len(is_no_thumb_hashes if is_thumbnail else is_thumb_hashes) == 0 and len(is_thumb_hashes if is_thumbnail else is_no_thumb_hashes) == 1:
-            # there is already a correct entry, but the hash might need to be updated
-            if next(iter(is_thumb_hashes if is_thumbnail else is_no_thumb_hashes)).lower() != new_hash.lower():
-                if is_applicable:
-                    # hash has changed, but the answer was for the current hash
-                    image.text = (is_thumb_rep if is_thumbnail else is_no_thumb_rep).sub(r"{{" + ("No thumbnails please" if is_thumbnail else "Is not thumbnail") + "|" + new_hash.lower() + "}}", content)
-                    #image.save(comment="*update thumbnail template hash;")
-                    print("'{}' would've saved:".format(image_page.title))
-                    print(image.text)
-                    images_updated += 1
-                else:
+    image_page = pywikibot.page.ImagePage(site, entry[0])
+    if image_page.exists():
+        if entry[1] not in ["y", "n"]:
+            remainings += [ entry ]
+        else:
+            is_thumbnail = entry[1] == "y"
+            image_data = urllib2.urlopen(image_page.fileUrl()).read()
+            new_hash = hashlib.md5(image_data).hexdigest().lower()
+            is_applicable = new_hash.lower() == entry[3].lower() #hash hashn't changed
+            content = image_page.text
+            templates = textlib.extract_templates_and_params(content)
+            is_thumb_hashes = set()
+            is_no_thumb_hashes = set()
+            for template in templates:
+                hashes = None
+                if template[0].lower() in ["nothumbnailsplease", "no thumbnails please"]:
+                    hashes = is_thumb_hashes
+                elif template[0].lower() == "is not thumbnail":
+                    hashes = is_no_thumb_hashes
+                if "1" in template[1] and hash_regex.match(template[1]["1"]):
+                    hashes.add(template[1]["1"])
+            if len(is_no_thumb_hashes) == 0 and len(is_thumb_hashes) == 0:
+                # automatic
+                if not is_applicable:
+                    # hash has changed
                     remainings += [ (entry[0], "?", "a", new_hash) ]
                     images_changed += 1
+                elif is_thumbnail:
+                    image.text = "{{No thumbnails please|" + new_hash + "}}\n" + content
+                    #image.save(comment="+add 'no thumbnails please' template;")
+                    print("'{}' would've saved:".format(image_page.title))
+                    print(image.text)
+                    images_is_template += 1
+                else:
+                    image.text = content + "\n{{Is not thumbnail|" + new_hash + "}}"
+                    #image.save(comment="+add 'is not thumbnails' template;")
+                    print("'{}' would've saved:".format(image_page.title))
+                    print(image.text)
+                    images_not_template += 1
+            elif len(is_no_thumb_hashes if is_thumbnail else is_thumb_hashes) == 0 and len(is_thumb_hashes if is_thumbnail else is_no_thumb_hashes) == 1:
+                # there is already a correct entry, but the hash might need to be updated
+                if next(iter(is_thumb_hashes if is_thumbnail else is_no_thumb_hashes)).lower() != new_hash.lower():
+                    if is_applicable:
+                        # hash has changed, but the answer was for the current hash
+                        image.text = (is_thumb_rep if is_thumbnail else is_no_thumb_rep).sub(r"{{" + ("No thumbnails please" if is_thumbnail else "Is not thumbnail") + "|" + new_hash.lower() + "}}", content)
+                        #image.save(comment="*update thumbnail template hash;")
+                        print("'{}' would've saved:".format(image_page.title))
+                        print(image.text)
+                        images_updated += 1
+                    else:
+                        remainings += [ (entry[0], "?", "a", new_hash) ]
+                        images_changed += 1
+                else:
+                    print("Image '{}' is already marked accordingly. No change necessary.".format(image_page.title()))
+                    images_already_applied += 1
             else:
-                print("Image '{}' is already marked accordingly. No change necessary.".format(image_page.title()))
-                images_already_applied += 1
-        else:
-            # conflict, please resolve manually
-            remainings += [ (entry[0], "?", "c", new_hash) ]
-            images_conflict += 1
+                # conflict, please resolve manually
+                remainings += [ (entry[0], "?", "c", new_hash) ]
+                images_conflict += 1
+    else:
+        print("Image '{}' does not exists anymore. Skipped.".format(image_page.title()))
+        images_already_applied += 1
 
 # Files in these categories are small but no thumbnails
 VALID_CATEGORIES = { 'Technology tree node images' }
@@ -198,7 +143,7 @@ for image in site.allimages(maxsize=20*2<<10):
                     hashes.add(template[1]["1"])
             if len(hashes) == 0:
                 images_unmarked += 1
-                size = get_image_size(image_data)
+                size = ksp_util.get_image_size(image_data)
                 if size:
                     # the values are switched for the second statement
                     if size[0]/size[1] > 0.4 and size[1]/size[0] > 0.4 and (size[0] < 100 or size[1] < 100):
@@ -224,5 +169,5 @@ else:
 # generate new list
 line = "\n".join([ "{{{{User:BobBot/thumb|{}|{}|{}|{}}}}}".format(*remaining) for remaining in remainings ]) + "\n"
 
-thumbs_page.text = thumbs_content[0:start] + line + thumbs_content[end:]
-thumbs_page.save(comment="+{} outdated; +{} multiple; +{} new; *{} changed; *{} conflicts; -{} already applied; -{} 'is thumbnail'; -{} 'is not thumbnail'; -{} hash updated;".format(images_outdated, images_multiple, images_detected, images_changed, images_conflict, images_already_applied, images_is_template, images_not_template, images_updated))
+thumbs_table.splice(line)
+thumbs_table.page.save(comment="+{} outdated; +{} multiple; +{} new; *{} changed; *{} conflicts; -{} already applied; -{} 'is thumbnail'; -{} 'is not thumbnail'; -{} hash updated;".format(images_outdated, images_multiple, images_detected, images_changed, images_conflict, images_already_applied, images_is_template, images_not_template, images_updated))
