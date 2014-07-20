@@ -29,7 +29,7 @@ def find_new_line(string, index, check):
 
 # read User:BobBot/Thumbnails
 thumbs_table = ksp_util.EditTable(site, "User:BobBot/Thumbnails")
-thumb_line = re.compile(r"^{{User:BobBot/thumb\|(File:[^|]*)\|([yn?])\|([am])\|([0-9a-fA-F]{32})}}$", re.M)
+thumb_line = re.compile(r"^{{User:BobBot/thumb\|(File:[^|]*)\|([yn?])\|([ac])\|([0-9a-fA-F]{32})}}$", re.M)
 hash_regex = re.compile(r"^[0-9a-fA-F]{32}$")
 is_thumb_rep = re.compile("{{([Nn]oThumbnailsPlease|[Nn]o thumbnails please)(\|[0-9a-fA-F]{32})?}}")
 is_no_thumb_rep = re.compile("{{[Ii]s not thumbnail(\|[0-9a-fA-F]{32})?}}")
