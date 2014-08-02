@@ -13,21 +13,24 @@ for arg in pywikibot.handleArgs():
     yes_all = True
 
 for page in site.allpages():
-  match = data_template.search(page.title())
-  if match:
-    content = page.text
-    templates = textlib.extract_templates_and_params(content)
-    for template in templates:
-      if template[0] == "Data template used":
-        print("Already contain template in '{}'. Skipped.".format(page.title()))
-        break
-    else:
-      # for didn't find
-      page.text = "<noinclude>{{Data template used}}</noinclude>" + content
-      if not yes_all:
-        answer = pywikibot.inputChoice("Add template to '{}'?".format(page.title()), ['Yes', 'No', 'All'], ['y', 'n', 'a'], 'n')
-        if answer == 'a':
-          yes_all = True
-      if yes_all or answer != 'n':
-        page.save(comment="+add 'data template used' template;")
-        print("Edited page '{}'.".format(page.title()))
+    match = data_template.search(page.title())
+    if match:
+        if not page.isRedirectPage():
+            content = page.text
+            templates = textlib.extract_templates_and_params(content)
+            for template in templates:
+                if template[0] == "Data template used":
+                    print("Already contain template in '{}'. Skipped.".format(page.title()))
+                    break
+            else:
+                # for didn't find
+                page.text = "<noinclude>{{Data template used}}</noinclude>" + content
+                if not yes_all:
+                    answer = pywikibot.inputChoice("Add template to '{}'?".format(page.title()), ['Yes', 'No', 'All'], ['y', 'n', 'a'], 'n')
+                    if answer == 'a':
+                        yes_all = True
+                if yes_all or answer != 'n':
+                    page.save(comment="+add 'data template used' template;")
+                    print("Edited page '{}'.".format(page.title()))
+        else:
+            print("Page '{}' is a redirect. Skipped.".format(page.title()))
