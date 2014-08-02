@@ -4,7 +4,46 @@ import pywikibot
 import re
 from pywikibot import textlib
 from pywikibot.page import Page, Category
+import mwparserfromhell
 
+# update both maps
+type_map = {
+    'lfe': 'Engine',
+    'cm': 'Command',
+    'sep': 'Utility',
+    'int': 'Utility',
+    'win': 'Aero',
+    'ant': 'Utility',
+    'lft': 'FuelTank',
+    'cs': 'Aero',
+    'sen': 'Utility',
+    'xgt': 'FuelTank',
+    'cp': 'Command',
+    'ie': 'Engine',
+    'pod': 'Command',
+    'rov': 'Utility',
+    'rw': 'Command',
+    'nc': 'Aero',
+    're': 'Utility',
+    'rcs': "Utility",
+    'sas': 'Command',
+    'chu': 'Utility',
+    'ada': 'Utility',
+    'pan': 'Electrical',
+    'lan': 'Utility',
+    'exp': 'Science',
+    'lad': 'Utility',
+    'lab': 'Science',
+    'mpt': 'FuelTank',
+    'lig': 'Utility',
+    'let': 'Aero',
+    'je': 'Engine',
+    'dp': 'Utility',
+    'srb': 'Engine',
+    'bat': 'Electrical',
+    'str': 'Structural',
+    'dec': 'Utility',
+}
 parent_map = {
   'Adapter': 'Structural',
   'AirIntake': 'Utility',
@@ -33,78 +72,80 @@ parent_map = {
   'Wing': 'Aero',
 }
 
-def extract_parent(template, base_length):
-  if 'parent' in template[1]:
-    return template[1]['parent']
-  else:
-    sub_name = template[0][base_length:]
+def extract_from_name(template, base_length):
+    sub_name = template.name[base_length:].strip()
     if sub_name in parent_map:
-      return parent_map[sub_name]
+        return [ parent_map[sub_name] ]
     else:
-      return None
+        return []
 
 site = pywikibot.getSite()
 p = re.compile(r"Parts/([^/]+)/part\.cfg")
 closing_brackets = re.compile(r"(^|[^}])}($|[^}])", re.M)
 opening_brackets = re.compile(r"(^|[^{]){($|[^{])", re.M)
 
+def extract_from_page(page):
+    if page.exists():
+        parsed = mwparserfromhell.parse(page.text)
+        parents = []
+        for template in parsed.filter_templates(recursive=False):
+            if template.name.strip() == "Infobox/Part":
+                if template.has("parent"):
+                    parents += [template.get("parent").value.strip()]
+                elif template.has("type"):
+                    if template.get("type").value.strip() in type_map:
+                        parents += [type_map[template.get("type").value.strip()]]
+                    else:
+                        print("ERROR: Unknown type '{}'".format(template.get("type").value.strip()))
+            elif template.name[:13] == "Infobox/Part/":
+                parents += extract_from_name(template, 13)
+            elif template.name[:8] == "Partbox/":
+                parents += extract_from_name(template, 8)
+        if len(parents) == 1:
+            return parents[0]
+        else:
+            return None
+    else:
+        return None
+
+
 cat = Category(site, 'Category:Part configuration files')
 for page in cat.articles():
-  print("==========================================")
   m = p.search(page.title())
   if m:
+    print("==========================================")
     print("Working on page: '{}'".format(page.title()))
-    sub_name = m.groups()[0]
-    part = None
+    part_name = m.group(1)
     text = page.get()
-    # extract_templates_and_params doesn't support single "{" and "}"
-    # replacing all with the html entities
-    entity_text = closing_brackets.sub(r"\1&#125;\2", text)
-    entity_text = opening_brackets.sub(r"\1&#123;\2", entity_text)
-    templates = textlib.extract_templates_and_params(entity_text)
-    part_config_count = 0
+    parsed = mwparserfromhell.parse(text)
+    templates = parsed.filter_templates()
+    text_name = []
     for template in templates:
-      if template[0] == 'Part config':
-        part_config_count += 1;
-        if part_config_count == 0 and len(template) == 2 and '1' in template[1]:
-          part_name = template[1]['1']
-          if Page(site, part_name + "/Box").exists():
-            part_name = part_name + "/Box"
-          print("Infobox is in page: '{}'".format(part_name))
-          part_page = Page(site, part_name)
-          part_templates = textlib.extract_templates_and_params(part_page.get())
-          for part_template in part_templates:
-            # Infobox/Part (7+1+4)
-            # Partbox      (7)
-            valid = False
-            if part_template[0][:12] == 'Infobox/Part':
-              parent = extract_parent(part_template, 12 + 1)
-              valid = True
-            elif part_template[0][:7] == 'Partbox':
-              parent = extract_parent(part_template, 7 + 1)
-              valid = True
-              print("'{}' is using old Partbox template".format(part_page.title()))
-            if valid and 'part' in part_template[1]:
-              part = part_template[1]['part']
-            if parent is None and valid:
-              print part_template
-              print("Unable to determine parent for '{}'".format(part_name))
-        else:
-          print("Part config template without part name.")
-    if part_config_count > 1:
-      print("Multiple {{Part config}} found.")
-    if parent is not None:
-      if part is not None and part != sub_name:
-        print("Internal part name changed from '{}' to '{}'".format(sub_name, part))
-        sub_name = part
-      target = "Parts/{}/{}/part.cfg".format(parent, sub_name)
-      print("Parent: {}; Target: {}".format(parent, target))
-      if Page(site, target).exists():
-        print("Didn't moved '{}' to '{}' because it already exists".format(page.title(), target))
-      else:
-        print("Move '{}' to '{}'".format(page.title(), target))
-#        page.move(newtitle=target, reason="Update to new directory system", deleteAndMove=True)
-    elif part_config_count == 0:
-      print("Unable to determine part name in '{}'".format(page.title()))
-  else:
-    print("Skipped page: '{}'".format(page.title()))
+        if template.name == "Part config":
+            if template.has("1"):
+                text_name += [template.get("1")]
+            else:
+                text_name += [None]
+    if len(text_name) == 1:
+        text_name = str(text_name[0])
+        box_page = Page(site, text_name + "/Box")
+        if not box_page.exists():
+            print("WARNING: The infobox page {} does not exist.".format(box_page.title()))
+        box_parent = extract_from_page(box_page)
+        part_page = Page(site, text_name)
+        part_parent = extract_from_page(part_page)
+        if not box_parent and not part_parent:
+            print("ERROR: Unable to determine part parent")
+        elif bool(box_parent) != bool(part_parent) or box_parent == part_parent:
+            parent = box_parent or part_parent
+            target = "Parts/{}/{}/part.cfg".format(parent, part_name)
+            print("Parent: {}; Target: {}".format(parent, target))
+            if Page(site, target).exists():
+                print("Didn't moved '{}' to '{}' because it already exists".format(page.title(), target))
+            else:
+                print("Move '{}' to '{}'".format(page.title(), target))
+                page.move(newtitle=target, reason="Update to new directory system", deleteAndMove=True)
+        elif box_parent and part_parent:
+            print("ERROR: Two parents identified but differing: {} and {}".format(box_parent, part_parent))
+    else:
+        print("ERROR: Found multiple part config templates")
