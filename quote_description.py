@@ -39,4 +39,4 @@ def scan_category(category, prefix):
             article.save(comment=" ".join(comment))
 
 scan_category(page.Category(site, "Category:Agencies"), "Agency")
-scan_category(page.Category(site, "Category:Default parts"), "Part")
+scan_category(page.Category(site, "Category:Default parts"), "Product")
