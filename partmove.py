@@ -75,32 +75,38 @@ parent_map = {
 def extract_from_name(template, base_length):
     sub_name = template.name[base_length:].strip()
     if sub_name in parent_map:
-        return [ parent_map[sub_name] ]
+        return parent_map[sub_name]
     else:
-        return []
+        return None
 
+pywikibot.handleArgs()
 site = pywikibot.getSite()
 p = re.compile(r"Parts/([^/]+)/part\.cfg")
-closing_brackets = re.compile(r"(^|[^}])}($|[^}])", re.M)
-opening_brackets = re.compile(r"(^|[^{]){($|[^{])", re.M)
 
 def extract_from_page(page):
     if page.exists():
         parsed = mwparserfromhell.parse(page.text)
         parents = []
         for template in parsed.filter_templates(recursive=False):
-            if template.name.strip() == "Infobox/Part":
-                if template.has("parent"):
-                    parents += [template.get("parent").value.strip()]
-                elif template.has("type"):
-                    if template.get("type").value.strip() in type_map:
-                        parents += [type_map[template.get("type").value.strip()]]
-                    else:
-                        print("ERROR: Unknown type '{}'".format(template.get("type").value.strip()))
-            elif template.name[:13] == "Infobox/Part/":
-                parents += extract_from_name(template, 13)
-            elif template.name[:8] == "Partbox/":
-                parents += extract_from_name(template, 8)
+            if template.name.strip()[:13] == "Infobox/Part/":
+                parent = extract_from_name(template, 13)
+            elif template.name.strip()[:8] == "Partbox/":
+                parent = extract_from_name(template, 8)
+            elif template.name.strip() == "Infobox/Part":
+                parent = None
+            else:
+                continue
+            if template.has("parent"):
+                parent = template.get("parent").value.strip()
+            elif template.has("type"):
+                if template.get("type").value.strip() in type_map:
+                    parent = type_map[template.get("type").value.strip()]
+                else:
+                    print("ERROR: Unknown type '{}'".format(template.get("type").value.strip()))
+            if parent:
+                parents += [parent]
+            else:
+                print("ERROR: Unable to determine parent for a template in '{}'".format(page.title()))
         if len(parents) == 1:
             return parents[0]
         else:
@@ -111,13 +117,12 @@ def extract_from_page(page):
 
 cat = Category(site, 'Category:Part configuration files')
 for page in cat.articles():
-  m = p.search(page.title())
+  m = p.match(page.title())
   if m:
     print("==========================================")
     print("Working on page: '{}'".format(page.title()))
     part_name = m.group(1)
-    text = page.get()
-    parsed = mwparserfromhell.parse(text)
+    parsed = mwparserfromhell.parse(page.text)
     templates = parsed.filter_templates()
     text_name = []
     for template in templates:
