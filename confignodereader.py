@@ -94,40 +94,35 @@ section_matcher = re.compile(r"^([ \t]*)(\w+)[ \t]*({)?[ \t]*$")
 value_matcher = re.compile(r"^[ \t]*(\w+)[ \t]*=[ \t]*(.*[^ \t])[ \t]*$")
 bracket_matcher = re.compile(r"^([ \t]*){[ \t]*$")
 
-def read_configuration(filename, root_list=False, module_same_indentation=False, return_actual_module=True):
-    root = None
-    if os.path.isdir(filename):
-        filename = os.path.join(filename, "part.cfg")
-    with open(filename) as f:
-        content = f.read()
-        if content.startswith(codecs.BOM_UTF8):
-            content = content[3:]
-        content = content.splitlines()
-        possible_section = None
-        current = root = Module(None, None)
-        for line in content:
-            if not commentary.match(line):
-                value_match = value_matcher.match(line)
-                if value_match:
-                    possible_section = None
-                    if not current.is_root or root_list:
-                        current._attributes.append(tuple(value_match.groups()))
-                else:
-                    section_match = section_matcher.match(line)
-                    if section_match:
-                        if section_match.group(3):
-                            current = Module(section_match.group(2), current)
-                        else:
-                            possible_section = (len(section_match.group(1)), section_match.group(2))
-                    elif possible_section:
-                        bracket_match = bracket_matcher.match(line)
-                        if bracket_match and (len(bracket_match.group(1)) == possible_section[0] or not module_same_indentation):
-                            current = Module(possible_section[1], current)
+def read(content, root_list=False, module_same_indentation=False, return_actual_module=True):
+    if content.startswith(codecs.BOM_UTF8):
+        content = content[3:]
+    content = content.splitlines()
+    possible_section = None
+    current = root = Module(None, None)
+    for line in content:
+        if not commentary.match(line):
+            value_match = value_matcher.match(line)
+            if value_match:
+                possible_section = None
+                if not current.is_root or root_list:
+                    current._attributes.append(tuple(value_match.groups()))
+            else:
+                section_match = section_matcher.match(line)
+                if section_match:
+                    if section_match.group(3):
+                        current = Module(section_match.group(2), current)
                     else:
-                        count = line.count("}")
-                        while count > 0 and not current.is_root:
-                            count -= 1
-                            current = current.parent
+                        possible_section = (len(section_match.group(1)), section_match.group(2))
+                elif possible_section:
+                    bracket_match = bracket_matcher.match(line)
+                    if bracket_match and (len(bracket_match.group(1)) == possible_section[0] or not module_same_indentation):
+                        current = Module(possible_section[1], current)
+                else:
+                    count = line.count("}")
+                    while count > 0 and not current.is_root:
+                        count -= 1
+                        current = current.parent
     if return_actual_module:
         if root.attribute_count > 0:
             raise Exception("Root module has a non empty attributes list.")
@@ -137,3 +132,11 @@ def read_configuration(filename, root_list=False, module_same_indentation=False,
             raise Exception("Root module has no modules.")
         root = root.module(0)
     return root
+
+def read_configuration(filename, root_list=False, module_same_indentation=False, return_actual_module=True):
+    root = None
+    if os.path.isdir(filename):
+        filename = os.path.join(filename, "part.cfg")
+    with open(filename) as f:
+        content = f.read()
+    return read(content, root_list, module_same_indentation, return_actual_module)

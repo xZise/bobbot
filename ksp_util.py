@@ -5,6 +5,8 @@ import pywikibot
 import StringIO
 import struct
 import imghdr
+import os.path
+import mwparserfromhell
 
 # Answer by "Fred the Fantastic": http://stackoverflow.com/a/20380514/473890
 # Modified to get a file object directly
@@ -82,3 +84,186 @@ def read_edit_table(site, page_name):
 def splice_edit_table(table_data, content, overwrite=True):
     end = table_data[2 if overwrite else 3] #use [:end] ... [end:] to not overwrite
     table_data[0].text = table_data[0].text[:end] + content + table_data[0].text[table_data[3]:]
+
+"""
+Tries to detect the GameData directory from the path.
+
+    - returns GameData if it's directly in that path
+    - if there is a Parts directory it's probably a mod,
+      so going two directories up
+
+After that only check if it contains the Squad directory,
+and returns it.
+"""
+def get_gamedata(path):
+    contents = os.listdir(path)
+    if "GameData" in contents:
+        directory = os.path.join(path, "GameData")
+    elif "Parts" in contents:
+        # probably a mod/squad directory
+        directory = os.path.join(path, "../../")
+    else:
+        directory = path
+    directory = os.path.abspath(directory)
+    if "Squad" in os.listdir(directory):
+        return directory
+    else:
+        raise Exception("GameData directory could not be determined.")
+
+
+
+def reverse_maplist(input_map):
+    reverse_map = {}
+    for k, v in input_map.iteritems():
+        if v not in reverse_map:
+            reverse_map[v] = []
+        reverse_map[v].append(k)
+    return reverse_map
+
+
+# update both maps
+type_map = {
+    'lfe': 'Engine',
+    'cm': 'Command',
+    'sep': 'Utility',
+    'int': 'Utility',
+    'win': 'Aero',
+    'ant': 'Utility',
+    'lft': 'FuelTank',
+    'cs': 'Aero',
+    'sen': 'Utility',
+    'xgt': 'FuelTank',
+    'cp': 'Command',
+    'ie': 'Engine',
+    'pod': 'Command',
+    'rov': 'Utility',
+    'rw': 'Command',
+    'nc': 'Aero',
+    're': 'Utility',
+    'rcs': "Utility",
+    'sas': 'Command',
+    'chu': 'Utility',
+    'ada': 'Utility',
+    'pan': 'Electrical',
+    'lan': 'Utility',
+    'exp': 'Science',
+    'lad': 'Utility',
+    'lab': 'Science',
+    'mpt': 'FuelTank',
+    'lig': 'Utility',
+    'let': 'Aero',
+    'je': 'Engine',
+    'dp': 'Utility',
+    'srb': 'Engine',
+    'bat': 'Electrical',
+    'str': 'Structural',
+    'dec': 'Utility',
+}
+
+MOD_MAP = {
+    "n": "NASAmission"
+}
+
+RESEARCH_MAP = {
+    "start": "Start",
+    "basicRocketry": "Basic Rocketry",
+    "generalRocketry": "General Rocketry",
+    "stability": "Stability",
+    "survivability": "Survivability",
+    "advRocketry": "Advanced Rocketry",
+    "generalConstruction": "General Construction",
+    "flightControl": "Flight Control",
+    "scienceTech": "Science Tech",
+    "heavyRocketry": "Heavy Rocketry",
+    "fuelSystems": "Fuel Systems",
+    "advConstruction": "Advanced Construction",
+    "aerodynamicSystems": "Aerodynamics",
+    "advFlightControl": "Advanced Flight Control",
+    "electrics": "Electrics",
+    "spaceExploration": "Space Exploration",
+    "landing": "Landing",
+    "heavierRocketry": "Heavier Rocketry",
+    "specializedConstruction": "Specialized Construction",
+    "actuators": "Actuators",
+    "supersonicFlight": "Supersonic Flight",
+    "specializedControl": "Specialized Control",
+    "precisionEngineering": "Precision Engineering",
+    "advElectrics": "Advanced Electrics",
+    "advExploration": "Advanced Exploration",
+    "advLanding": "Advanced Landing",
+    "nuclearPropulsion": "Nuclear Propulsion",
+    "advMetalworks": "Advanced MetalWorks",
+    "composites": "Composites",
+    "advAerodynamics": "Advanced Aerodynamics",
+    "highAltitudeFlight": "High Altitude Flight",
+    "largeControl": "Large Control",
+    "unmannedTech": "Unmanned Tech",
+    "ionPropulsion": "Ion Propulsion",
+    "largeElectrics": "Large Electrics",
+    "electronics": "Electronics",
+    "fieldScience": "Field Science",
+    "veryHeavyRocketry": "Very Heavy Rocketry",
+    "metaMaterials": "Meta-Materials",
+    "heavyAerodynamics": "Heavy Aerodynamics",
+    "hypersonicFlight": "Hypersonic Flight",
+    "advUnmanned": "Advanced Unmanned Tech",
+    "specializedElectrics": "Specialized Electrics",
+    "advScienceTech": "Advanced Science Tech",
+    "advancedMotors": "Advanced Motors",
+}
+REVERSE_RESEARCH_MAP = {v: k for k, v in RESEARCH_MAP.iteritems()}
+
+def get_parent(template):
+    template_name = template.name.strip()
+    parent = None
+    if len(template_name) > 12 and template_name[12] == "/":
+        sub_name = template_name[13:]
+        if sub_name == "Strut": # the only template not converted
+            parent = "Structural"
+        else:
+            print("Unrecognized subtemplate '{}'".format(sub_name))
+    if template.has("parent"):
+        parent = template.get("parent").value.strip()
+    elif template.has("type"):
+        if template.get("type").value.strip() in type_map:
+            parent = type_map[template.get("type").value.strip()]
+        else:
+            print("ERROR: Unknown type '{}'".format(template.get("type").value.strip()))
+    if not parent:
+        print("ERROR: Unable to determine parent for a template in '{}'".format(page.title()))
+    return parent
+
+
+def extract_from_page(page):
+    if page.exists():
+        parsed = mwparserfromhell.parse(page.text)
+        infoboxes = []
+        for template in parsed.filter_templates(recursive=False):
+            if template.name.strip()[:12] == "Infobox/Part":
+                infoboxes += [template]
+        if len(infoboxes) == 1:
+            return infoboxes[0], parsed
+        else:
+            return None, parsed
+    else:
+        return None, parsed
+
+
+def get_part_infobox(site, part_name):
+    box_page = pywikibot.page.Page(site, part_name + "/Box")
+    box_infobox, box_parsed = extract_from_page(box_page)
+    part_page = pywikibot.page.Page(site, part_name)
+    part_infobox, part_parsed = extract_from_page(part_page)
+    if not box_page.exists():
+        if not part_page.exists():
+            raise pywikibot.NoPage(box_page, box_parsed)
+        print("WARNING: The infobox page {} does not exist.".format(box_page.title()))
+    # only one must be defined
+    if not box_infobox and not part_infobox:
+        print("ERROR: Neither the part nor box page contain an infobox.")
+        return (None, box_page, box_parsed)
+    elif box_infobox and part_infobox:
+        print("ERROR: Both part and box page contin an infobox.")
+        return (None, box_page, box_parsed)
+    else:
+        return (box_infobox or part_infobox, box_page if box_infobox else part_infobox, box_parsed if box_infobox else part_parsed)
