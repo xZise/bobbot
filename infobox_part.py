@@ -127,35 +127,6 @@ def get_entry_string(entries):
         s += "{{" + "User:BobBot/Types/entry|{}|{}|{}".format(entry[0], entry[1], entry[2]) + "".join(["|{}".format(guess) for guess in entry[3]]) + "}}\n"
     return s
 
-# Order of parameter names:
-ORDER = {
-    "name": 0,
-    "file": 1,
-    "role": 2,
-    "type": 3,
-    "size": 4,
-    "size2": 5,
-    "manufacturer": 6,
-    "costs": 7,
-    "mass": 8,
-    "lf": 9,
-    "ox": 10,
-    "mp": 11,
-    "sf": 12,
-    "xg": 13,
-    "ia": 14,
-    "drag": 15,
-    "drag type": 16,
-    "temp": 17,
-    "tolerance": 18,
-    "research": 19,
-    "since": 20,
-    "part": 21,
-    "parent": 22,
-    "more": 23,
-    "notes": 24,
-    "nref": 25,
-}
 
 def save_read(template, parameter, default=None):
     if template.has(parameter):
@@ -318,7 +289,7 @@ try:
                     # reorder parameters
                     if add_type:
                         try:
-                            template.params.sort(key=lambda parameter: ORDER[str(parameter.name)])
+                            template.params.sort(key=lambda parameter: ksp_util.ORDER[str(parameter.name)])
                         except KeyError as e:
                             print("Unable to sort the parameter '{}' in '{}'".format(e, page.title()))
                         else:

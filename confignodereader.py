@@ -4,19 +4,19 @@ import re
 import os.path
 import codecs
 
-"""
-A module is one basic block within curly brackets:
-
-    PART
-    {
-
-    }
-
-It contains two lists:
- - All value associations (name = RAPIER)
- - All submodules containing objects of this class
-"""
 class Module(object):
+    """
+    A module is one basic block within curly brackets:
+
+        PART
+        {
+
+        }
+
+    It contains two lists:
+     - All value associations (name = RAPIER)
+     - All submodules containing objects of this class
+    """
     GET_ALL = False
     GET_SINGLE = 1
     GET_SAME = 2
@@ -60,16 +60,19 @@ class Module(object):
     def module_count(self):
         return len(self._modules)
 
-    """
-    Returns the attributes with the given name.
-
-    The single_only parameter can be:
-        - GET_ALL (or False): Returns a list all values given by the name
-        - GET_SAME: Returns the entry if all entries found are the same, otherwise None (multiple entries with different values OR no entries at all)
-        - GET_SINGLE: Returns the value if there is only one entry with that name, otherwise None
-    It returns a list in GET_ALL and only the value otherwise.
-    """
     def get(self, name, single_only=GET_SAME):
+        """
+        Returns the attributes with the given name.
+
+        The single_only parameter can be:
+            - GET_ALL (or False): Returns a list all values given by the name
+            - GET_SAME: Returns the entry if all entries found are the same,
+                otherwise None (multiple entries with different values OR no
+                entries at all)
+            - GET_SINGLE: Returns the value if there is only one entry with
+                that name, otherwise None
+        It returns a list in GET_ALL and only the value otherwise.
+        """
         found = []
         for entry in self.attributes:
             if name == entry[0]:
@@ -77,7 +80,7 @@ class Module(object):
         if single_only:
             if len(found) == 1:
                 return found[0]
-            elif len(found) > 1 and single_only == GET_SAME:
+            elif len(found) > 1 and single_only == Module.GET_SAME:
                 first = None
                 for entry in found:
                     if not first:
@@ -89,14 +92,17 @@ class Module(object):
         else:
             return found
 
+def strip_utf8bom(content):
+    if content.startswith(codecs.decode(codecs.BOM_UTF8, "utf8")):
+        content = content[1:]
+    return content
+
 commentary = re.compile(r"^[ \t]*//.*$")
 section_matcher = re.compile(r"^([ \t]*)(\w+)[ \t]*({)?[ \t]*$")
 value_matcher = re.compile(r"^[ \t]*(\w+)[ \t]*=[ \t]*(.*[^ \t])[ \t]*$")
 bracket_matcher = re.compile(r"^([ \t]*){[ \t]*$")
 
 def read(content, root_list=False, module_same_indentation=False, return_actual_module=True):
-    if content.startswith(codecs.BOM_UTF8):
-        content = content[3:]
     content = content.splitlines()
     possible_section = None
     current = root = Module(None, None)
@@ -137,6 +143,6 @@ def read_configuration(filename, root_list=False, module_same_indentation=False,
     root = None
     if os.path.isdir(filename):
         filename = os.path.join(filename, "part.cfg")
-    with open(filename) as f:
-        content = f.read()
+    with codecs.open(filename, encoding="utf8") as f:
+        content = strip_utf8bom(f.read())
     return read(content, root_list, module_same_indentation, return_actual_module)

@@ -85,17 +85,17 @@ def splice_edit_table(table_data, content, overwrite=True):
     end = table_data[2 if overwrite else 3] #use [:end] ... [end:] to not overwrite
     table_data[0].text = table_data[0].text[:end] + content + table_data[0].text[table_data[3]:]
 
-"""
-Tries to detect the GameData directory from the path.
-
-    - returns GameData if it's directly in that path
-    - if there is a Parts directory it's probably a mod,
-      so going two directories up
-
-After that only check if it contains the Squad directory,
-and returns it.
-"""
 def get_gamedata(path):
+    """
+    Tries to detect the GameData directory from the path.
+
+        - returns GameData if it's directly in that path
+        - if there is a Parts directory it's probably a mod,
+          so going two directories up
+
+    After that only check if it contains the Squad directory,
+    and returns it.
+    """
     contents = os.listdir(path)
     if "GameData" in contents:
         directory = os.path.join(path, "GameData")
@@ -121,6 +121,41 @@ def reverse_maplist(input_map):
     return reverse_map
 
 
+# Order of parameter names:
+ORDER = {name: i for i, name in enumerate([
+    "name",
+    "file",
+    "role",
+    "type",
+    "size",
+    "size2",
+    "manufacturer",
+    "manufacturer2",
+    "costs",
+    "mass",
+    "lf",
+    "ox",
+    "mp",
+    "sf",
+    "xg",
+    "ia",
+    "drag",
+    "drag type",
+    "temp",
+    "tolerance",
+    "research",
+    "unlock cost",
+    "since",
+    "part",
+    "parent",
+    "mod",
+    "physics insignificant",
+    "more",
+    "notes",
+    "nref",
+])}
+
+
 # update both maps
 type_map = {
     'lfe': 'Engine',
@@ -136,14 +171,14 @@ type_map = {
     'cp': 'Command',
     'ie': 'Engine',
     'pod': 'Command',
-    'rov': 'Utility',
+    'rov': 'Wheel',
     'rw': 'Command',
     'nc': 'Aero',
     're': 'Utility',
     'rcs': "Utility",
     'sas': 'Command',
     'chu': 'Utility',
-    'ada': 'Utility',
+    'ada': 'Structural',
     'pan': 'Electrical',
     'lan': 'Utility',
     'exp': 'Science',
@@ -156,13 +191,53 @@ type_map = {
     'dp': 'Utility',
     'srb': 'Engine',
     'bat': 'Electrical',
+    "gen": "Electrical",
     'str': 'Structural',
     'dec': 'Utility',
 }
 
-MOD_MAP = {
-    "n": "NASAmission"
-}
+# Exceptions dictionary:
+# "part page": Boolean → Work with the /Box page (won't move the page otherwise)
+
+class Mod(object):
+
+    _SHORTS = {}
+    _LONGS = {}
+
+    @staticmethod
+    def by_short(short_name):
+        return Mod._SHORTS[short_name]
+    @staticmethod
+    def by_long(long_name):
+        return Mod._LONGS[long_name]
+    @staticmethod
+    def all_mods():
+        return Mod._SHORTS.values()[:]
+
+    @staticmethod
+    def add(short_name, long_name, types=type_map):
+        mod = Mod(short_name, long_name, types)
+        Mod._SHORTS[short_name] = mod
+        Mod._LONGS[long_name] = mod
+
+    def __init__(self, short_name, long_name, types=type_map):
+        self._short_name = short_name
+        self._long_name = long_name
+        self._types = types
+
+    @property
+    def short(self):
+        return self._short_name
+    @property
+    def name(self):
+        return self._long_name
+    @property
+    def type_map(self):
+        return self._types
+
+
+Mod.add(None, "Squad", type_map)
+Mod.add("n", "NASAmission", None)
 
 RESEARCH_MAP = {
     "start": "Start",
@@ -213,7 +288,7 @@ RESEARCH_MAP = {
 }
 REVERSE_RESEARCH_MAP = {v: k for k, v in RESEARCH_MAP.iteritems()}
 
-def get_parent(template):
+def get_parent(template, type_map=type_map):
     template_name = template.name.strip()
     parent = None
     if len(template_name) > 12 and template_name[12] == "/":
@@ -229,14 +304,12 @@ def get_parent(template):
             parent = type_map[template.get("type").value.strip()]
         else:
             print("ERROR: Unknown type '{}'".format(template.get("type").value.strip()))
-    if not parent:
-        print("ERROR: Unable to determine parent for a template in '{}'".format(page.title()))
     return parent
 
 
-def extract_from_page(page):
-    if page.exists():
-        parsed = mwparserfromhell.parse(page.text)
+def extract_from_page(page=None, text=None):
+    if text is not None or page.exists():
+        parsed = mwparserfromhell.parse(page.text if page and page.exists() else text)
         infoboxes = []
         for template in parsed.filter_templates(recursive=False):
             if template.name.strip()[:12] == "Infobox/Part":
@@ -246,17 +319,17 @@ def extract_from_page(page):
         else:
             return None, parsed
     else:
-        return None, parsed
+        return None, None
 
 
 def get_part_infobox(site, part_name):
-    box_page = pywikibot.page.Page(site, part_name + "/Box")
+    box_page = pywikibot.page.Page(site, part_name + u"/Box")
     box_infobox, box_parsed = extract_from_page(box_page)
     part_page = pywikibot.page.Page(site, part_name)
     part_infobox, part_parsed = extract_from_page(part_page)
     if not box_page.exists():
         if not part_page.exists():
-            raise pywikibot.NoPage(box_page, box_parsed)
+            raise pywikibot.NoPage(box_page)
         print("WARNING: The infobox page {} does not exist.".format(box_page.title()))
     # only one must be defined
     if not box_infobox and not part_infobox:
